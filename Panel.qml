@@ -21,10 +21,11 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   // Theme aliases only — no hardcoded greens/reds.
-  // Under pace: accent; over pace: urgent; pace marker: muted.
+  // Under pace: accent; over pace: urgent.
+  // Pace marker uses full accent so it reads apart from faint day ticks.
   readonly property color underPaceColor: Color.accent
   readonly property color overPaceColor: Color.urgent
-  readonly property color paceMarkerColor: Color.muted
+  readonly property color paceMarkerColor: Color.accent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property color surface: Color.popups.background
   readonly property color track: Style.selectedFillFor(foreground, Color.accent)
@@ -495,11 +496,12 @@ Panel {
       }
 
       // Expected-pace marker: where linear usage "should" be right now.
+      // Stronger than day ticks (solid accent, slightly wider, full height).
       Rectangle {
         id: paceMarker
         visible: meter.paceFraction >= 0
         z: 3
-        width: Math.max(2, Math.round(Style.space(1.5)))
+        width: Math.max(2, Math.round(Style.space(2)))
         height: parent.height
         radius: width / 2
         anchors.verticalCenter: parent.verticalCenter

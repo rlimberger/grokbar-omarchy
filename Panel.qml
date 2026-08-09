@@ -10,8 +10,8 @@ import qs.Ui
 //   • Chat 12%  • Grok Build 11%
 Panel {
   id: root
-  moduleName: "rlimberger.grok-usage"
-  ipcTarget: "rlimberger.grok-usage"
+  moduleName: "rlimberger.grokbar-omarchy"
+  ipcTarget: "rlimberger.grokbar-omarchy"
   manageIpc: false
 
   property var anchorItem: null

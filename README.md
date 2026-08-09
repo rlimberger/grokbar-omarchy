@@ -1,4 +1,4 @@
-# Grok Usage
+# Grokbar (Omarchy)
 
 Omarchy bar widget for SuperGrok / Grok Build usage:
 
@@ -20,34 +20,34 @@ click refreshes.
 
 ## Install
 
-Plugins land disabled until you enable them. Plugin id: `rlimberger.grok-usage`.
+Plugins land disabled until you enable them. Plugin id: `rlimberger.grokbar-omarchy`.
 
 **Preferred** — add from GitHub, then enable:
 
 ```bash
-omarchy plugin add https://github.com/rlimberger/omarchy-grok-usage.git
-omarchy plugin enable rlimberger.grok-usage --section right
+omarchy plugin add https://github.com/rlimberger/grokbar-omarchy.git
+omarchy plugin enable rlimberger.grokbar-omarchy --section right
 ```
 
 Or add and enable in one step:
 
 ```bash
-omarchy plugin add https://github.com/rlimberger/omarchy-grok-usage.git --enable
+omarchy plugin add https://github.com/rlimberger/grokbar-omarchy.git --enable
 ```
 
 **Hand-install** — clone or copy into a folder that matches the manifest id, then rescan and enable:
 
 ```bash
-git clone https://github.com/rlimberger/omarchy-grok-usage.git \
-  ~/.config/omarchy/plugins/rlimberger.grok-usage
+git clone https://github.com/rlimberger/grokbar-omarchy.git \
+  ~/.config/omarchy/plugins/rlimberger.grokbar-omarchy
 omarchy-shell shell rescanPlugins
-omarchy plugin enable rlimberger.grok-usage --section right
+omarchy plugin enable rlimberger.grokbar-omarchy --section right
 ```
 
 Disable:
 
 ```bash
-omarchy plugin disable rlimberger.grok-usage
+omarchy plugin disable rlimberger.grokbar-omarchy
 ```
 
 After QML or scanner edits, reload the shell:
@@ -71,7 +71,7 @@ OIDC access tokens via `auth.x.ai` and writes them back atomically.
 ## Settings
 
 Settings live in the widget's entry in `~/.config/omarchy/shell.json`.
-Set them with `omarchy bar set rlimberger.grok-usage <key> <value>`:
+Set them with `omarchy bar set rlimberger.grokbar-omarchy <key> <value>`:
 
 | Key | Default | What it does |
 |---|---|---|
@@ -81,7 +81,7 @@ Set them with `omarchy bar set rlimberger.grok-usage <key> <value>`:
 Numbers need `--json`, or they land in `shell.json` as strings:
 
 ```bash
-omarchy bar set rlimberger.grok-usage refreshIntervalSec 120 --json
+omarchy bar set rlimberger.grokbar-omarchy refreshIntervalSec 120 --json
 ```
 
 ## Data sources
@@ -95,6 +95,6 @@ omarchy bar set rlimberger.grok-usage refreshIntervalSec 120 --json
 
 - `BarWidget.qml` — bar widget, timers, and click actions
 - `Panel.qml` — Grok-only usage panel (weekly pool + product breakdown)
-- `scripts/grok_usage_scanner.py` — SuperGrok weekly usage scanner
+- `scripts/grokbar_scanner.py` — SuperGrok weekly usage scanner
 - `assets/grok.svg` — white Grok icon; recolored to `bar.foreground`
 - `assets/grok-light.svg` — dark icon for light popup surfaces

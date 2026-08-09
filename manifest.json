@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "id": "rlimberger.grok-usage",
-  "name": "Grok Usage",
+  "id": "rlimberger.grokbar-omarchy",
+  "name": "Grokbar",
   "version": "1.0.0",
   "author": "rlimberger",
   "license": "MIT",
@@ -14,11 +14,11 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "Grok Usage",
+    "displayName": "Grokbar",
     "description": "Bar widget with SuperGrok weekly pool % and reset (days / hours).",
     "category": "AI",
     "aliases": [
-      "grok-usage"
+      "grokbar-omarchy"
     ],
     "allowMultiple": false,
     "defaultSection": "right",

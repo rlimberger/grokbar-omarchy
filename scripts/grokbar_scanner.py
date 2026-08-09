@@ -4,7 +4,7 @@
 SuperGrok paid plans share one weekly usage pool across products (Chat, Build,
 Imagine, Voice, API). There is no monthly SuperGrok pool to display.
 
-Source (same surface used by CodexBar / GNOME grok-usage extensions):
+Source (same surface used by CodexBar / GNOME SuperGrok usage extensions):
   - Weekly SuperGrok pool: gRPC-web GetGrokCreditsConfig on grok.com
 
 Auth: ~/.grok/auth.json (written by `grok login`). Expired OIDC access tokens
@@ -30,7 +30,7 @@ CREDITS_URL = "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfi
 # Same settings surface the Grok CLI uses for subscription_tier_display.
 SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
 TOKEN_URL = "https://auth.x.ai/oauth2/token"
-USER_AGENT = "omarchy-grok-usage/1.0"
+USER_AGENT = "grokbar-omarchy/1.0"
 
 # Product labels for credit-usage category enum (GetGrokCreditsConfig field 1.7).
 # Confirmed against grok.com Settings → Usage (Aug 2026):
@@ -220,7 +220,7 @@ def save_auth(creds):
       raise
   except Exception as exc:
     # Non-fatal: in-memory token still works for this scan.
-    sys.stderr.write(f"omarchy-grok-usage: could not write auth.json: {exc}\n")
+    sys.stderr.write(f"grokbar-omarchy: could not write auth.json: {exc}\n")
 
 
 def refresh_token(creds):

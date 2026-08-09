@@ -11,7 +11,7 @@ import qs.Ui
 // Left click toggles the panel; right click refreshes.
 BarWidget {
   id: root
-  moduleName: "rlimberger.grok-usage"
+  moduleName: "rlimberger.grokbar-omarchy"
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -68,7 +68,7 @@ BarWidget {
     return isFinite(ms) ? root.formatBarDuration(ms) : ""
   }
 
-  readonly property string scannerPath: String(Qt.resolvedUrl("scripts/grok_usage_scanner.py")).replace("file://", "")
+  readonly property string scannerPath: String(Qt.resolvedUrl("scripts/grokbar_scanner.py")).replace("file://", "")
   // White icon only — MultiEffect recolors it to bar.foreground so it tracks
   // the theme the same way glyph widgets do (baked #fff/#111 never will).
   readonly property url iconSource: Qt.resolvedUrl("assets/grok.svg")
@@ -194,7 +194,7 @@ BarWidget {
   onSettingsChanged: injectPanel()
 
   IpcHandler {
-    target: "rlimberger.grok-usage"
+    target: "rlimberger.grokbar-omarchy"
     function refresh(): string { root.refresh(); return "ok" }
     function open(): void { root.open() }
     function close(): void { root.close() }
@@ -255,7 +255,7 @@ BarWidget {
           root.applyScan(JSON.parse(text))
         } catch (e) {
           root.hasData = false
-          console.warn("rlimberger.grok-usage: bad scanner JSON", e)
+          console.warn("rlimberger.grokbar-omarchy: bad scanner JSON", e)
         }
       }
     }
@@ -263,7 +263,7 @@ BarWidget {
     onExited: root.refreshing = false
 
     stderr: StdioCollector {
-      onStreamFinished: if (text.trim() !== "") console.warn("rlimberger.grok-usage", text.trim())
+      onStreamFinished: if (text.trim() !== "") console.warn("rlimberger.grokbar-omarchy", text.trim())
     }
   }
 

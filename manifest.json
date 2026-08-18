@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "rlimberger.grokbar-omarchy",
   "name": "Grokbar",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "rlimberger",
   "license": "MIT",
-  "description": "SuperGrok weekly-pool bar widget: icon, weekly %, and reset countdown.",
+  "description": "SuperGrok weekly pool plus Cursor (X-login only) monthly pools on the bar.",
   "kinds": [
     "bar-widget"
   ],
@@ -15,7 +15,7 @@
   },
   "barWidget": {
     "displayName": "Grokbar",
-    "description": "Bar widget with SuperGrok weekly pool % and reset (days / hours).",
+    "description": "Bar widget with SuperGrok weekly pool plus Cursor (X-login only) monthly pools and reset.",
     "category": "AI",
     "aliases": [
       "grokbar-omarchy"
@@ -24,7 +24,9 @@
     "defaultSection": "right",
     "defaults": {
       "refreshIntervalSec": 300,
-      "authPath": ""
+      "authPath": "",
+      "stateDbPath": "",
+      "cursorAuthPath": ""
     },
     "schema": [
       {
@@ -42,6 +44,20 @@
         "label": "Grok auth.json",
         "defaultValue": "",
         "description": "Optional. Defaults to ~/.grok/auth.json."
+      },
+      {
+        "key": "stateDbPath",
+        "type": "path",
+        "label": "Cursor state.vscdb",
+        "defaultValue": "",
+        "description": "Optional. Defaults to ~/.config/Cursor/User/globalStorage/state.vscdb."
+      },
+      {
+        "key": "cursorAuthPath",
+        "type": "path",
+        "label": "Cursor CLI auth.json",
+        "defaultValue": "",
+        "description": "Optional. Defaults to ~/.config/cursor/auth.json."
       }
     ]
   }

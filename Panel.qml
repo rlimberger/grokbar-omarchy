@@ -2,12 +2,9 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Grok usage popup. BarWidget.qml owns the bar slot and scan state.
-// Data card text mirrors grok.com Settings → Usage:
-//   Weekly SuperGrok Heavy Limit
-//   23% used              Resets August 13, 2026 at 9:46 PM
-//   [====|====|               ]
-//   • Chat 12%  • Grok Build 11%
+// Usage popup. BarWidget.qml owns the bar slot and scan state.
+// Grok card mirrors grok.com Settings → Usage (weekly pool + products).
+// Cursor card (X-login only) shows two monthly pools + a shared reset.
 Panel {
   id: root
   moduleName: "rlimberger.grokbar-omarchy"
@@ -35,10 +32,24 @@ Panel {
   readonly property string resetAt: hostWidget ? String(hostWidget.resetAt || "") : ""
   readonly property string periodStart: hostWidget ? String(hostWidget.periodStart || "") : ""
   readonly property string tierLabel: hostWidget ? String(hostWidget.tierLabel || "") : ""
+  // Written by BarWidget.injectPanel after each scan. Do not read these
+  // back through hostWidget — that binding stayed empty in the running shell.
+  property string grokLoginEmail: ""
   readonly property string usageStatusText: hostWidget ? String(hostWidget.usageStatusText || "") : ""
   readonly property string authHelpText: hostWidget ? String(hostWidget.authHelpText || "") : ""
   readonly property var categories: hostWidget && hostWidget.categories ? hostWidget.categories : []
   readonly property double nowMs: hostWidget ? Number(hostWidget.nowMs) : Date.now()
+
+  readonly property bool grokHasData: rawPrimaryPercent >= 0
+  readonly property real cursorAutoPercent: hostWidget ? Number(hostWidget.cursorAutoPercent) : -1
+  readonly property real cursorApiPercent: hostWidget ? Number(hostWidget.cursorApiPercent) : -1
+  readonly property string cursorResetAt: hostWidget ? String(hostWidget.cursorResetAt || "") : ""
+  readonly property string cursorPeriodStart: hostWidget ? String(hostWidget.cursorPeriodStart || "") : ""
+  readonly property string cursorTierLabel: hostWidget ? String(hostWidget.cursorTierLabel || "") : ""
+  property string cursorLoginEmail: ""
+  readonly property string cursorUsageStatusText: hostWidget ? String(hostWidget.cursorUsageStatusText || "") : ""
+  readonly property string cursorAuthHelpText: hostWidget ? String(hostWidget.cursorAuthHelpText || "") : ""
+  readonly property bool cursorHasData: cursorAutoPercent >= 0 || cursorApiPercent >= 0
 
   // TEMP QA hook: force over-pace styling (leave false in production).
   readonly property bool simulateOverPace: false
@@ -96,7 +107,7 @@ Panel {
     return "Grok"
   }
 
-  // Hero subtitle: leave empty so we don't repeat plan text; status when auth fails.
+  // Status only — email is shown as a normal-case line (PanelHero.meta is uppercase).
   readonly property string heroMeta: {
     if (usageStatusText !== "") return usageStatusText
     return ""
@@ -111,6 +122,56 @@ Panel {
   readonly property string resetsLabel: root.formatResetsLabel(resetAt)
 
   readonly property bool alarming: primaryPercent >= 0.9 || overPace
+
+  readonly property real cursorExpectedPace: {
+    if (hostWidget && typeof hostWidget.cursorExpectedPace === "number"
+        && isFinite(hostWidget.cursorExpectedPace) && hostWidget.cursorExpectedPace >= 0)
+      return Math.max(0, Math.min(1, Number(hostWidget.cursorExpectedPace)))
+    var start = root.parseTimeMs(cursorPeriodStart)
+    var end = root.parseTimeMs(cursorResetAt)
+    if (!(end > 0)) return -1
+    if (!(start > 0) || !(start < end))
+      start = end - 30 * 24 * 3600 * 1000
+    var frac = (nowMs - start) / (end - start)
+    if (!isFinite(frac)) return -1
+    return Math.max(0, Math.min(1, frac))
+  }
+
+  readonly property real cursorAutoDisplay: {
+    var raw = cursorAutoPercent
+    if (!root.simulateOverPace || !(raw >= 0) || !(cursorExpectedPace >= 0))
+      return raw
+    return Math.max(0, Math.min(1, Math.max(raw, cursorExpectedPace + 0.15)))
+  }
+  readonly property real cursorApiDisplay: {
+    var raw = cursorApiPercent
+    if (!root.simulateOverPace || !(raw >= 0) || !(cursorExpectedPace >= 0))
+      return raw
+    return Math.max(0, Math.min(1, Math.max(raw, cursorExpectedPace + 0.15)))
+  }
+  readonly property bool cursorAutoOverPace: cursorExpectedPace >= 0 && cursorAutoDisplay >= 0
+    && cursorAutoDisplay > cursorExpectedPace + 0.0001
+  readonly property bool cursorApiOverPace: cursorExpectedPace >= 0 && cursorApiDisplay >= 0
+    && cursorApiDisplay > cursorExpectedPace + 0.0001
+
+  readonly property var cursorPools: {
+    var out = []
+    if (cursorAutoDisplay >= 0)
+      out.push({ title: "Cursor Models", percent: cursorAutoDisplay, overPace: cursorAutoOverPace })
+    if (cursorApiDisplay >= 0)
+      out.push({ title: "Other Models", percent: cursorApiDisplay, overPace: cursorApiOverPace })
+    return out
+  }
+
+  readonly property string cursorTitle: cursorTierLabel !== "" ? cursorTierLabel : "Cursor"
+  readonly property string cursorHeroMeta: {
+    if (cursorUsageStatusText !== "") return cursorUsageStatusText
+    return ""
+  }
+  readonly property string cursorResetsLabel: root.formatResetsLabel(cursorResetAt)
+  readonly property url cursorIconSource: colorLuminance(surface) >= 0.5
+    ? Qt.resolvedUrl("assets/cursor-light.svg")
+    : Qt.resolvedUrl("assets/cursor.svg")
 
   // Segment shades of the pace-aware fill color (accent under, urgent over).
   readonly property var segmentPalette: {
@@ -230,7 +291,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(400))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(420))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(520))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -246,12 +307,18 @@ Panel {
         width: parent.width
         spacing: Style.space(12)
 
-        // Logo + header text (was data-section title).
-        // Title: "Weekly SuperGrok Heavy Limit"  |  Meta: empty (or auth status)
+        // Grok card. Hidden when there is nothing to say about Grok.
+        Column {
+          id: grokCard
+          visible: root.grokHasData || root.usageStatusText !== ""
+          width: parent.width
+          spacing: Style.space(12)
+
         PanelHero {
           width: parent.width
           title: root.weeklyTitle
           meta: root.heroMeta
+          detail: root.grokLoginEmail
           foreground: root.foreground
           fontFamily: root.fontFamily
 
@@ -381,6 +448,123 @@ Panel {
             }
           }
         }
+        }
+
+        PanelSeparator {
+          visible: grokCard.visible && cursorCard.visible
+          foreground: root.foreground
+        }
+
+        Column {
+          id: cursorCard
+          visible: root.cursorHasData || root.cursorUsageStatusText !== ""
+          width: parent.width
+          spacing: Style.space(12)
+
+          PanelHero {
+            width: parent.width
+            title: root.cursorTitle
+            meta: root.cursorHeroMeta
+            detail: root.cursorLoginEmail
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+
+            iconComponent: Component {
+              Image {
+                source: root.cursorIconSource
+                width: Style.font.display
+                height: Style.font.display
+                sourceSize.width: Style.font.display * 2
+                sourceSize.height: Style.font.display * 2
+                fillMode: Image.PreserveAspectFit
+              }
+            }
+          }
+
+          BorderSurface {
+            visible: root.cursorUsageStatusText !== ""
+            width: parent.width
+            implicitHeight: cursorStatusText.implicitHeight + Style.spacing.xl * 2
+            color: Qt.rgba(root.urgent.r, root.urgent.g, root.urgent.b, 0.10)
+            borderSpec: Border.flat(Qt.rgba(root.urgent.r, root.urgent.g, root.urgent.b, 0.35), 1)
+            radius: Style.cornerRadius
+
+            Text {
+              id: cursorStatusText
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.leftMargin: Style.space(12)
+              anchors.rightMargin: Style.space(12)
+              text: root.cursorAuthHelpText !== "" ? root.cursorAuthHelpText : root.cursorUsageStatusText
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
+          }
+
+          Column {
+            visible: root.cursorHasData
+            width: parent.width
+            spacing: Style.space(10)
+
+            Repeater {
+              model: root.cursorPools
+
+              Column {
+                required property var modelData
+                required property int index
+                width: cursorCard.width
+                spacing: Style.space(6)
+
+                Item {
+                  width: parent.width
+                  implicitHeight: Math.max(poolUsedText.implicitHeight, poolResetText.implicitHeight)
+
+                  Text {
+                    id: poolUsedText
+                    width: parent.width
+                      - (poolResetText.visible ? poolResetText.implicitWidth + Style.space(10) : 0)
+                    text: (modelData.title || "Pool") + " · "
+                      + Math.round(Number(modelData.percent) * 100) + "% of monthly limit used"
+                    color: (modelData.overPace || Number(modelData.percent) >= 0.9)
+                      ? root.urgent : root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    elide: Text.ElideRight
+                  }
+
+                  Text {
+                    id: poolResetText
+                    visible: index === 0 && root.cursorResetsLabel !== ""
+                    text: root.cursorResetsLabel
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    elide: Text.ElideLeft
+                    horizontalAlignment: Text.AlignRight
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+                }
+
+                SegmentedMeter {
+                  width: parent.width
+                  segments: []
+                  totalPercent: Number(modelData.percent)
+                  expectedPace: root.cursorExpectedPace
+                  overPace: modelData.overPace === true
+                  fillColor: modelData.overPace ? root.overPaceColor : root.underPaceColor
+                  paceMarkerColor: root.paceMarkerColor
+                  dayCount: 0
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -402,7 +586,8 @@ Panel {
 
     implicitHeight: thickness
 
-    readonly property int dayMarkerCount: Math.max(0, dayCount - 1)
+    // dayCount < 2 → no ticks (monthly Cursor pools use dayCount: 0).
+    readonly property int dayMarkerCount: dayCount >= 2 ? dayCount - 1 : 0
 
     readonly property real usedFraction: {
       if (meter.totalPercent >= 0) return root.clamp(meter.totalPercent, 0, 1)

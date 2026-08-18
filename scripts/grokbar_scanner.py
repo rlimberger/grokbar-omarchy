@@ -76,6 +76,7 @@ def empty_result(**overrides):
     "secondaryRateLimitLabel": "",
     "secondaryRateLimitResetAt": "",
     "tierLabel": "",
+    "accountEmail": "",
     "usageStatusText": "",
     "authHelpText": "",
     "categories": [],
@@ -687,7 +688,7 @@ def jwt_tier_fallback(token):
   return known.get(tier_n, "")
 
 
-def build_result(weekly, tier_label=""):
+def build_result(weekly, tier_label="", account_email=""):
   # Shared weekly pool only — no monthly SuperGrok limit.
   return empty_result(
     rateLimitPercent=weekly["used_fraction"],
@@ -698,6 +699,7 @@ def build_result(weekly, tier_label=""):
     secondaryRateLimitLabel="",
     secondaryRateLimitResetAt="",
     tierLabel=tier_label or "",
+    accountEmail=account_email or "",
     categories=weekly.get("categories") or [],
   )
 
@@ -746,7 +748,11 @@ def main(argv=None):
   if not tier_label:
     tier_label = jwt_tier_fallback(creds.get("token"))
 
-  return emit(build_result(weekly, tier_label=tier_label))
+  return emit(build_result(
+    weekly,
+    tier_label=tier_label,
+    account_email=str(creds.get("email") or ""),
+  ))
 
 
 if __name__ == "__main__":

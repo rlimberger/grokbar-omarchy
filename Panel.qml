@@ -4,7 +4,8 @@ import qs.Ui
 
 // Usage popup. BarWidget.qml owns the bar slot and scan state.
 // Grok card mirrors grok.com Settings → Usage (weekly pool + products).
-// Cursor card (X-login only) shows two monthly pools + a shared reset.
+// Cursor card is optional (panel toggle, off by default) and shows two
+// monthly pools + a shared reset when the Cursor account matches Grok.
 Panel {
   id: root
   moduleName: "rlimberger.grokbar-omarchy"
@@ -32,15 +33,18 @@ Panel {
   readonly property string resetAt: hostWidget ? String(hostWidget.resetAt || "") : ""
   readonly property string periodStart: hostWidget ? String(hostWidget.periodStart || "") : ""
   readonly property string tierLabel: hostWidget ? String(hostWidget.tierLabel || "") : ""
-  // Written by BarWidget.injectPanel after each scan. Do not read these
-  // back through hostWidget — that binding stayed empty in the running shell.
   property string grokLoginEmail: ""
+  readonly property string subscriptionPeriodEnd: hostWidget ? String(hostWidget.subscriptionPeriodEnd || "") : ""
+  readonly property bool subscriptionCancelsAtEnd: hostWidget ? hostWidget.subscriptionCancelsAtEnd === true : false
   readonly property string usageStatusText: hostWidget ? String(hostWidget.usageStatusText || "") : ""
   readonly property string authHelpText: hostWidget ? String(hostWidget.authHelpText || "") : ""
   readonly property var categories: hostWidget && hostWidget.categories ? hostWidget.categories : []
   readonly property double nowMs: hostWidget ? Number(hostWidget.nowMs) : Date.now()
 
   readonly property bool grokHasData: rawPrimaryPercent >= 0
+  readonly property bool showCursorUsage: hostWidget
+    ? hostWidget.showCursorUsage === true
+    : !!(settings && settings.showCursorUsage === true)
   readonly property real cursorAutoPercent: hostWidget ? Number(hostWidget.cursorAutoPercent) : -1
   readonly property real cursorApiPercent: hostWidget ? Number(hostWidget.cursorApiPercent) : -1
   readonly property string cursorResetAt: hostWidget ? String(hostWidget.cursorResetAt || "") : ""
@@ -107,10 +111,9 @@ Panel {
     return "Grok"
   }
 
-  // Status only — email is shown as a normal-case line (PanelHero.meta is uppercase).
   readonly property string heroMeta: {
     if (usageStatusText !== "") return usageStatusText
-    return ""
+    return root.formatRebillLabel(subscriptionPeriodEnd, subscriptionCancelsAtEnd)
   }
 
   // "23% of weekly limit used"
@@ -166,7 +169,7 @@ Panel {
   readonly property string cursorTitle: cursorTierLabel !== "" ? cursorTierLabel : "Cursor"
   readonly property string cursorHeroMeta: {
     if (cursorUsageStatusText !== "") return cursorUsageStatusText
-    return ""
+    return root.formatRebillLabel(cursorResetAt, false)
   }
   readonly property string cursorResetsLabel: root.formatResetsLabel(cursorResetAt)
   readonly property url cursorIconSource: colorLuminance(surface) >= 0.5
@@ -242,6 +245,17 @@ Panel {
       + ", " + timePart
   }
 
+  // Subscription rebill/expiry under the plan title (PanelHero.meta is uppercase).
+  function formatRebillLabel(iso, cancels) {
+    var when = root.parseResetWhen(iso)
+    if (!when) return ""
+    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    var verb = cancels === true ? "Expires" : "Renews"
+    return verb + " " + months[when.getMonth()] + " " + when.getDate()
+      + ", " + when.getFullYear()
+  }
+
   function segmentColor(index) {
     var palette = root.segmentPalette
     if (!palette || !palette.length) return root.usageFillColor
@@ -275,6 +289,11 @@ Panel {
   function refresh() {
     if (hostWidget && typeof hostWidget.refresh === "function")
       hostWidget.refresh()
+  }
+
+  function setShowCursorUsage(on) {
+    if (hostWidget && typeof hostWidget.setShowCursorUsage === "function")
+      hostWidget.setShowCursorUsage(on)
   }
 
   function switchPanel(direction) {
@@ -451,13 +470,28 @@ Panel {
         }
 
         PanelSeparator {
-          visible: grokCard.visible && cursorCard.visible
+          visible: grokCard.visible
+          foreground: root.foreground
+        }
+
+        Toggle {
+          width: parent.width
+          label: "Cursor usage"
+          description: "Show Cursor monthly usage on the bar when the Cursor account matches Grok."
+          checked: root.showCursorUsage
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          onClicked: root.setShowCursorUsage(!root.showCursorUsage)
+        }
+
+        PanelSeparator {
+          visible: cursorCard.visible
           foreground: root.foreground
         }
 
         Column {
           id: cursorCard
-          visible: root.cursorHasData || root.cursorUsageStatusText !== ""
+          visible: root.showCursorUsage && (root.cursorHasData || root.cursorUsageStatusText !== "")
           width: parent.width
           spacing: Style.space(12)
 

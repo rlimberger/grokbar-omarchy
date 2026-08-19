@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Scan Cursor period-pool usage for the Omarchy bar widget.
 
-Show Cursor only when that session belongs to the same person as Grok:
-the Cursor account email must match ~/.grok/auth.json. A second Cursor
-login is hidden. The Grok OIDC token is never sent to Cursor APIs.
+Show Cursor only when that session belongs to the same account as Grok.
+A second Cursor login is hidden. The Grok OIDC token is never sent to
+Cursor APIs. Account identifiers are never written to scanner JSON.
 
 Sources: ~/.config/cursor/auth.json (CLI) and Cursor state.vscdb (IDE).
 Expired session JWTs are refreshed via api2.cursor.sh and written back
@@ -79,7 +79,6 @@ def empty_result(**overrides):
     "authHelpText": "",
     "categories": [],
     "xLoginFound": False,
-    "loginProvider": "",
   }
   out.update(overrides)
   return out
@@ -252,24 +251,16 @@ def cursor_session_ok(payload, provider, email, grok_email):
 
 
 def expired_x_result(creds=None):
-  provider = ""
-  if isinstance(creds, dict):
-    provider = str(creds.get("login_provider") or "")
   return empty_result(
     xLoginFound=True,
-    loginProvider=provider,
     usageStatusText="Sign in to Cursor",
-    authHelpText="Cursor X session expired. Sign in to Cursor with X again.",
+    authHelpText="Cursor session expired. Sign in to Cursor again.",
   )
 
 
 def x_error_result(creds, usage_status, auth_help):
-  provider = ""
-  if isinstance(creds, dict):
-    provider = str(creds.get("login_provider") or "")
   return empty_result(
     xLoginFound=True,
-    loginProvider=provider,
     usageStatusText=usage_status,
     authHelpText=auth_help,
   )
@@ -580,6 +571,18 @@ def fetch_plan_name(creds):
   return str(info.get("planName") or "").strip()
 
 
+def fetch_account_email(creds):
+  payload, kind, _err = http_post_json(
+    f"{API_BASE}/GetMe",
+    creds["token"],
+    {},
+    timeout=15,
+  )
+  if kind is not None or not isinstance(payload, dict):
+    return ""
+  return str(payload.get("email") or "").strip()
+
+
 def with_auth_retry(creds, fetch_fn):
   result, kind, err = fetch_fn(creds)
   if kind != "auth":
@@ -707,9 +710,8 @@ def build_result(creds, payload, tier_label=""):
     secondaryRateLimitLabel="Other Models",
     secondaryRateLimitResetAt=reset_iso,
     tierLabel=format_tier(membership),
-    accountEmail=str(creds.get("email") or ""),
+    accountEmail=str(creds.get("account_email") or ""),
     xLoginFound=True,
-    loginProvider=str(creds.get("login_provider") or ""),
   )
 
   included = cents_or_none(plan.get("includedSpend"), payload.get("includedSpend"))
@@ -747,7 +749,7 @@ def main(argv=None):
   parser.add_argument(
     "--grok-auth",
     default=os.environ.get("GROK_AUTH_PATH", str(DEFAULT_GROK_AUTH)),
-    help="Path to Grok auth.json used to identify the X login email",
+    help="Path to Grok auth.json used to match the Grok account",
   )
   parser.add_argument(
     "--probe",
@@ -791,8 +793,9 @@ def main(argv=None):
       err or "Could not load Cursor period usage.",
     ))
 
-  # Plan name is best-effort; period usage still stands if this call fails.
+  # Plan name and account email are best-effort; period usage still stands.
   tier_label = fetch_plan_name(creds)
+  creds["account_email"] = fetch_account_email(creds)
 
   return emit(build_result(creds, payload, tier_label=tier_label))
 

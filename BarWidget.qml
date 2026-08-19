@@ -5,7 +5,8 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Bar widget: Grok weekly pool and/or Cursor monthly pools (X-login only).
+// Bar widget: Grok weekly pool, plus optional Cursor monthly pools.
+// Cursor is off by default; the panel toggle (showCursorUsage) turns it on.
 // Each provider is icon + % + reset (5d / 12h). Cursor also shows Other Models %.
 // Self-hides a provider with no usable session or period-pool data.
 // Left click toggles the panel; right click refreshes.
@@ -24,6 +25,8 @@ BarWidget {
   property string periodStart: ""
   property string tierLabel: ""
   property string grokLoginEmail: ""
+  property string subscriptionPeriodEnd: ""
+  property bool subscriptionCancelsAtEnd: false
   property string usageStatusText: ""
   property string authHelpText: ""
   property var categories: []
@@ -46,6 +49,9 @@ BarWidget {
   property bool cursorAvailable: false
 
   readonly property int refreshIntervalSec: Math.max(30, Number(setting("refreshIntervalSec", 300)) || 300)
+  // Off unless the panel toggle (or shell.json) turns it on. Bind to
+  // `settings` directly so persistSettings() redraws without a reload.
+  readonly property bool showCursorUsage: !!(settings && settings.showCursorUsage === true)
 
   // TEMP QA hook: force over-pace styling (leave false in production).
   readonly property bool simulateOverPace: false
@@ -120,8 +126,8 @@ BarWidget {
   }
 
   readonly property bool grokVisible: grokAvailable && hasData
-  readonly property bool cursorVisible: cursorAvailable && cursorHasData
-  readonly property bool alarming: grokAlarming || cursorAlarming
+  readonly property bool cursorVisible: showCursorUsage && cursorAvailable && cursorHasData
+  readonly property bool alarming: grokAlarming || (cursorVisible && cursorAlarming)
 
   readonly property string scannerPath: String(Qt.resolvedUrl("scripts/grokbar_scanner.py")).replace("file://", "")
   readonly property string cursorScannerPath: String(Qt.resolvedUrl("scripts/cursor_usage_scanner.py")).replace("file://", "")
@@ -195,7 +201,9 @@ BarWidget {
     root.resetAt = String(data.rateLimitResetAt || "")
     root.periodStart = String(data.rateLimitPeriodStart || "")
     root.tierLabel = String(data.tierLabel || "")
-    root.grokLoginEmail = String(data.accountEmail || data.email || "")
+    root.grokLoginEmail = String(data.accountEmail || "")
+    root.subscriptionPeriodEnd = String(data.subscriptionPeriodEnd || "")
+    root.subscriptionCancelsAtEnd = data.subscriptionCancelsAtEnd === true
     root.usageStatusText = String(data.usageStatusText || "")
     root.authHelpText = String(data.authHelpText || "")
     root.categories = Array.isArray(data.categories) ? data.categories : []
@@ -210,6 +218,8 @@ BarWidget {
     root.periodStart = ""
     root.tierLabel = ""
     root.grokLoginEmail = ""
+    root.subscriptionPeriodEnd = ""
+    root.subscriptionCancelsAtEnd = false
     root.usageStatusText = ""
     root.authHelpText = ""
     root.categories = []
@@ -230,7 +240,7 @@ BarWidget {
     root.cursorResetAt = String(data.rateLimitResetAt || data.secondaryRateLimitResetAt || "")
     root.cursorPeriodStart = String(data.rateLimitPeriodStart || "")
     root.cursorTierLabel = String(data.tierLabel || "")
-    root.cursorLoginEmail = String(data.accountEmail || data.email || "")
+    root.cursorLoginEmail = String(data.accountEmail || "")
     root.cursorUsageStatusText = String(data.usageStatusText || "")
     root.cursorAuthHelpText = String(data.authHelpText || "")
     root.cursorHasData = autoPct >= 0 || apiPct >= 0
@@ -258,10 +268,27 @@ BarWidget {
     if (!cursorPresenceProbe.running) cursorPresenceProbe.running = true
   }
 
+  function persistSettings(values) {
+    var entry = { id: root.moduleName }
+    for (var existing in root.settings) if (existing !== "id") entry[existing] = root.settings[existing]
+    for (var key in values) entry[key] = values[key]
+    root.settings = entry
+    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+      root.bar.shell.updateEntryInline(root.moduleName, entry)
+  }
+
+  function setShowCursorUsage(on) {
+    var next = on === true
+    if (root.showCursorUsage === next) return
+    root.persistSettings({ showCursorUsage: next })
+    if (next) root.probeCursor()
+    else root.clearCursorUsage()
+  }
+
   function refresh() {
     // Availability first: no auth → hide and skip the API.
     root.probeGrok()
-    root.probeCursor()
+    if (root.showCursorUsage) root.probeCursor()
   }
 
   function refreshUsage() {
@@ -293,8 +320,6 @@ BarWidget {
     if ("settings" in target) target.settings = root.settings
     if ("anchorItem" in target) target.anchorItem = button
     if ("hostWidget" in target) target.hostWidget = root
-    // Write emails onto the panel. Reading them back through hostWidget
-    // silently failed (empty) even though the scanners return them.
     if ("grokLoginEmail" in target) target.grokLoginEmail = root.grokLoginEmail
     if ("cursorLoginEmail" in target) target.cursorLoginEmail = root.cursorLoginEmail
   }
@@ -447,17 +472,17 @@ BarWidget {
     triggeredOnStart: true
     onTriggered: {
       root.probeGrok()
-      root.probeCursor()
+      if (root.showCursorUsage) root.probeCursor()
     }
   }
 
   Timer {
     interval: root.refreshIntervalSec * 1000
-    running: root.grokAvailable || root.cursorAvailable
+    running: root.grokAvailable || (root.showCursorUsage && root.cursorAvailable)
     repeat: true
     onTriggered: {
       root.refreshUsage()
-      root.refreshCursorUsage()
+      if (root.showCursorUsage) root.refreshCursorUsage()
     }
   }
 

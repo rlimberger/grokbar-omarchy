@@ -8,7 +8,8 @@ Source (same surface used by CodexBar / GNOME SuperGrok usage extensions):
   - Weekly SuperGrok pool: gRPC-web GetGrokCreditsConfig on grok.com
 
 Auth: ~/.grok/auth.json (written by `grok login`). Expired OIDC access tokens
-are refreshed via auth.x.ai and written back atomically.
+are refreshed via auth.x.ai and written back atomically. Account email and
+subscription rebill come from Grok subscription APIs, not hardcoded values.
 """
 from __future__ import annotations
 
@@ -29,6 +30,8 @@ DEFAULT_AUTH = Path.home() / ".grok" / "auth.json"
 CREDITS_URL = "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig"
 # Same settings surface the Grok CLI uses for subscription_tier_display.
 SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
+USER_URL = "https://cli-chat-proxy.grok.com/v1/user"
+SUBSCRIPTIONS_URL = "https://grok.com/rest/subscriptions"
 TOKEN_URL = "https://auth.x.ai/oauth2/token"
 USER_AGENT = "grokbar-omarchy/1.0"
 
@@ -77,6 +80,8 @@ def empty_result(**overrides):
     "secondaryRateLimitResetAt": "",
     "tierLabel": "",
     "accountEmail": "",
+    "subscriptionPeriodEnd": "",
+    "subscriptionCancelsAtEnd": False,
     "usageStatusText": "",
     "authHelpText": "",
     "categories": [],
@@ -128,10 +133,10 @@ def load_auth(auth_path):
   try:
     raw = auth_path.read_text(encoding="utf-8")
     data = json.loads(raw)
-  except Exception as exc:
+  except Exception:
     return None, empty_result(
       usageStatusText="Grok unavailable",
-      authHelpText=f"Could not read Grok auth file: {exc}",
+      authHelpText="Could not read the Grok auth file.",
     )
 
   if not isinstance(data, dict) or not data:
@@ -252,7 +257,10 @@ def refresh_token(creds):
     with urllib.request.urlopen(req, timeout=20) as resp:
       payload = json.loads(resp.read().decode("utf-8", errors="replace"))
   except urllib.error.HTTPError as exc:
-    raw = exc.read().decode("utf-8", errors="replace")
+    try:
+      exc.read()
+    except Exception:
+      pass
     if exc.code in (400, 401, 403):
       return False, empty_result(
         usageStatusText="Sign in to Grok",
@@ -260,12 +268,12 @@ def refresh_token(creds):
       )
     return False, empty_result(
       usageStatusText="Grok limits unavailable",
-      authHelpText=f"Token refresh failed (HTTP {exc.code}): {raw[:120]}",
+      authHelpText=f"Token refresh failed (HTTP {exc.code}).",
     )
-  except Exception as exc:
+  except Exception:
     return False, empty_result(
       usageStatusText="Grok limits unavailable",
-      authHelpText=f"Token refresh failed: {exc}",
+      authHelpText="Token refresh failed.",
     )
 
   access = payload.get("access_token")
@@ -332,10 +340,10 @@ def http_get_json(url, token, timeout=20):
       usageStatusText="Grok limits unavailable",
       authHelpText=f"Settings API returned HTTP {status}",
     )
-  except Exception as exc:
+  except Exception:
     return None, "net", empty_result(
       usageStatusText="Grok limits unavailable",
-      authHelpText=str(exc),
+      authHelpText="Network error while loading usage.",
     )
 
   if status < 200 or status >= 300:
@@ -378,10 +386,10 @@ def http_post_bytes(url, token, body, content_type, timeout=20):
       usageStatusText="Grok limits unavailable",
       authHelpText=f"Credits API returned HTTP {status}",
     )
-  except Exception as exc:
+  except Exception:
     return None, "net", empty_result(
       usageStatusText="Grok limits unavailable",
-      authHelpText=str(exc),
+      authHelpText="Network error while loading usage.",
     )
 
 
@@ -673,22 +681,74 @@ def jwt_tier_fallback(token):
       return val.strip()
 
   # Numeric `tier` claim observed in auth.x.ai access tokens.
-  # Verified against Grok CLI settings for this account (5 → SuperGrok Heavy).
   # Keep the mapping conservative: only known values, else empty.
   tier = payload.get("tier")
   try:
     tier_n = int(tier)
   except (TypeError, ValueError):
     return ""
-  # Confirmed via /v1/settings subscription_tier_display for tier==5.
-  # Other values intentionally unmapped until verified against the settings API.
   known = {
     5: "SuperGrok Heavy",
   }
   return known.get(tier_n, "")
 
 
-def build_result(weekly, tier_label="", account_email=""):
+def fetch_account_profile(creds):
+  payload, kind, err = http_get_json(USER_URL, creds["token"], timeout=15)
+  if kind is not None:
+    return None, kind, err
+  if not isinstance(payload, dict):
+    return None, "parse", None
+  return payload, None, None
+
+
+def fetch_subscriptions(creds):
+  payload, kind, err = http_get_json(SUBSCRIPTIONS_URL, creds["token"], timeout=15)
+  if kind is not None:
+    return None, kind, err
+  if not isinstance(payload, dict):
+    return None, "parse", None
+  return payload, None, None
+
+
+def pick_super_grok_subscription(payload):
+  """Active Super Grok (Heavy/Pro) subscription, if any."""
+  if not isinstance(payload, dict):
+    return None
+  subs = payload.get("subscriptions")
+  if not isinstance(subs, list):
+    return None
+  active = []
+  for sub in subs:
+    if not isinstance(sub, dict):
+      continue
+    tier = str(sub.get("tier") or "")
+    if "SUPER_GROK" not in tier and "HEAVY" not in tier:
+      continue
+    if str(sub.get("status") or "") != "SUBSCRIPTION_STATUS_ACTIVE":
+      continue
+    active.append(sub)
+  if not active:
+    return None
+
+  def period_end(sub):
+    stripe = sub.get("stripe") if isinstance(sub.get("stripe"), dict) else {}
+    return str(sub.get("billingPeriodEnd") or stripe.get("currentPeriodEnd") or "")
+
+  return max(active, key=period_end)
+
+
+def subscription_rebill(payload):
+  sub = pick_super_grok_subscription(payload)
+  if not sub:
+    return "", False
+  stripe = sub.get("stripe") if isinstance(sub.get("stripe"), dict) else {}
+  end = str(sub.get("billingPeriodEnd") or stripe.get("currentPeriodEnd") or "").strip()
+  cancels = bool(sub.get("cancelAtPeriodEnd") or stripe.get("cancelAtPeriodEnd"))
+  return end, cancels
+
+
+def build_result(weekly, tier_label="", account_email="", period_end="", cancels=False):
   # Shared weekly pool only — no monthly SuperGrok limit.
   return empty_result(
     rateLimitPercent=weekly["used_fraction"],
@@ -700,6 +760,8 @@ def build_result(weekly, tier_label="", account_email=""):
     secondaryRateLimitResetAt="",
     tierLabel=tier_label or "",
     accountEmail=account_email or "",
+    subscriptionPeriodEnd=period_end or "",
+    subscriptionCancelsAtEnd=bool(cancels),
     categories=weekly.get("categories") or [],
   )
 
@@ -748,10 +810,23 @@ def main(argv=None):
   if not tier_label:
     tier_label = jwt_tier_fallback(creds.get("token"))
 
+  account_email = ""
+  profile, profile_kind, _profile_err = with_auth_retry(creds, fetch_account_profile)
+  if profile_kind != "auth" and isinstance(profile, dict):
+    account_email = str(profile.get("email") or "").strip()
+
+  period_end = ""
+  cancels = False
+  subs, subs_kind, _subs_err = with_auth_retry(creds, fetch_subscriptions)
+  if subs_kind != "auth":
+    period_end, cancels = subscription_rebill(subs)
+
   return emit(build_result(
     weekly,
     tier_label=tier_label,
-    account_email=str(creds.get("email") or ""),
+    account_email=account_email,
+    period_end=period_end,
+    cancels=cancels,
   ))
 
 

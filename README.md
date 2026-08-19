@@ -2,6 +2,8 @@
 
 Omarchy bar widget for SuperGrok weekly usage, with optional Cursor monthly usage.
 
+![Grokbar usage panel](preview.png)
+
 - **Grok** — icon, weekly pool percent, and reset (`5d` / `12h`)
 - **Cursor** — off by default; enable from the panel to show Cursor Models %, Other Models %, and reset
 

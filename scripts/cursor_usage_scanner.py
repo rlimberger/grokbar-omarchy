@@ -96,6 +96,27 @@ def emit(payload):
   return 0
 
 
+# Qt Text defaults to AutoText and will fetch <img src="...">. Display fields
+# from Cursor APIs must stay plain text even if a QML caller forgets textFormat.
+_RESOURCE_MARKUP = (
+  "<img", "<image", "<object", "<embed", "<iframe", "<frame",
+  "<link", "<meta", "<base", "<source", "<svg", "<script", "<style",
+)
+
+
+def plain_text(value, max_len=128):
+  text = str(value or "").replace("\x00", "").strip()
+  if not text:
+    return ""
+  compact = "".join(text.lower().split())
+  for tag in _RESOURCE_MARKUP:
+    if tag in compact:
+      return ""
+  if len(text) > max_len:
+    return text[:max_len].rstrip()
+  return text
+
+
 def parse_iso(value):
   text = str(value or "").strip()
   if not text:
@@ -709,8 +730,8 @@ def build_result(creds, payload, tier_label=""):
     secondaryRateLimitPercent=percent_from_plan(plan, "apiPercentUsed"),
     secondaryRateLimitLabel="Other Models",
     secondaryRateLimitResetAt=reset_iso,
-    tierLabel=format_tier(membership),
-    accountEmail=str(creds.get("account_email") or ""),
+    tierLabel=plain_text(format_tier(membership), max_len=80),
+    accountEmail=plain_text(creds.get("account_email"), max_len=254),
     xLoginFound=True,
   )
 

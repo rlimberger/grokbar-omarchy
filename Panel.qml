@@ -333,7 +333,7 @@ Panel {
           width: parent.width
           spacing: Style.space(12)
 
-        PanelHero {
+        PlainHero {
           width: parent.width
           title: root.weeklyTitle
           meta: root.heroMeta
@@ -369,6 +369,7 @@ Panel {
             anchors.leftMargin: Style.space(12)
             anchors.rightMargin: Style.space(12)
             text: root.authHelpText !== "" ? root.authHelpText : root.usageStatusText
+            textFormat: Text.PlainText
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -495,7 +496,7 @@ Panel {
           width: parent.width
           spacing: Style.space(12)
 
-          PanelHero {
+          PlainHero {
             width: parent.width
             title: root.cursorTitle
             meta: root.cursorHeroMeta
@@ -531,6 +532,7 @@ Panel {
               anchors.leftMargin: Style.space(12)
               anchors.rightMargin: Style.space(12)
               text: root.cursorAuthHelpText !== "" ? root.cursorAuthHelpText : root.cursorUsageStatusText
+              textFormat: Text.PlainText
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -726,6 +728,97 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         x: Math.round(parent.width * meter.paceFraction - width / 2)
         color: meter.paceMarkerColor
+      }
+    }
+  }
+
+  // Same layout as PanelHero, but API plan labels and emails stay PlainText.
+  // Stock PanelHero uses AutoText, which fetches <img src="...">.
+  component PlainHero: Item {
+    id: hero
+
+    property Component iconComponent: null
+    property string title: ""
+    property string meta: ""
+    property string detail: ""
+    property color foreground: Color.foreground
+    property string fontFamily: Style.font.family
+
+    readonly property color dim: Qt.darker(foreground, 1.4)
+
+    width: parent ? parent.width : implicitWidth
+    implicitHeight: Math.max(iconLoader.implicitHeight, heroLabels.implicitHeight)
+
+    Loader {
+      id: iconLoader
+      sourceComponent: hero.iconComponent
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+    }
+
+    Column {
+      id: heroLabels
+      anchors.left: iconLoader.right
+      anchors.leftMargin: Style.space(14)
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(2)
+
+      Row {
+        visible: hero.title !== "" || detailPill.visible
+        width: parent.width
+
+        Text {
+          visible: hero.title !== ""
+          text: hero.title
+          textFormat: Text.PlainText
+          width: Math.min(implicitWidth, Math.max(0, parent.width - (detailPill.visible ? detailPill.implicitWidth + Style.space(8) : 0)))
+          color: hero.foreground
+          font.family: hero.fontFamily
+          font.pixelSize: Style.font.title
+          font.bold: true
+          elide: Text.ElideRight
+        }
+
+        Item {
+          width: Math.max(0, parent.width - parent.children[0].width - detailPill.implicitWidth)
+          height: 1
+        }
+
+        BorderSurface {
+          id: detailPill
+          visible: hero.detail !== ""
+          implicitWidth: detailText.implicitWidth + Style.space(10)
+          implicitHeight: detailText.implicitHeight + Style.space(4)
+          anchors.verticalCenter: parent.verticalCenter
+          color: "transparent"
+          borderSpec: Border.controlSpec("normal", hero.foreground, Color.accent)
+          radius: Style.cornerRadius
+
+          Text {
+            id: detailText
+            anchors.centerIn: parent
+            text: hero.detail
+            textFormat: Text.PlainText
+            color: hero.dim
+            font.family: hero.fontFamily
+            font.pixelSize: Style.font.body
+            font.bold: true
+          }
+        }
+      }
+
+      Text {
+        width: parent.width
+        text: hero.meta.toUpperCase()
+        textFormat: Text.PlainText
+        visible: text !== ""
+        color: hero.dim
+        font.family: hero.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+        font.letterSpacing: 1.2
+        elide: Text.ElideRight
       }
     }
   }

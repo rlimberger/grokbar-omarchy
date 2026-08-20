@@ -4,7 +4,7 @@
 SuperGrok paid plans share one weekly usage pool across products (Chat, Build,
 Imagine, Voice, API). There is no monthly SuperGrok pool to display.
 
-Source (same surface used by CodexBar / GNOME SuperGrok usage extensions):
+Source:
   - Weekly SuperGrok pool: gRPC-web GetGrokCreditsConfig on grok.com
 
 Auth: ~/.grok/auth.json (written by `grok login`). Expired OIDC access tokens
@@ -79,6 +79,7 @@ def empty_result(**overrides):
     "secondaryRateLimitLabel": "",
     "secondaryRateLimitResetAt": "",
     "tierLabel": "",
+    "accountName": "",
     "accountEmail": "",
     "subscriptionPeriodEnd": "",
     "subscriptionCancelsAtEnd": False,
@@ -414,7 +415,7 @@ def http_post_bytes(url, token, body, content_type, timeout=20):
     )
 
 
-# --- protobuf / gRPC-web helpers (CodexBar / GNOME extension compatible) ---
+# --- protobuf / gRPC-web helpers ---
 
 def _read_varint(buf, index):
   value = 0
@@ -547,7 +548,7 @@ def parse_credits_config(raw):
     all_cats.extend(scan["categories"])
 
   # credit_usage_percent: fixed32 float 0–100, field number ending in 1;
-  # prefer shallower paths (CodexBar: min path length, then order).
+  # prefer shallower paths (min path length, then order).
   percent_candidates = [
     (path, value, ord_)
     for path, value, ord_ in all_fixed
@@ -714,6 +715,17 @@ def jwt_tier_fallback(token):
   return known.get(tier_n, "")
 
 
+def account_display_name(payload):
+  if not isinstance(payload, dict):
+    return ""
+  name = str(payload.get("name") or "").strip()
+  if name:
+    return name
+  first = str(payload.get("firstName") or payload.get("given_name") or "").strip()
+  last = str(payload.get("lastName") or payload.get("family_name") or "").strip()
+  return " ".join(part for part in (first, last) if part)
+
+
 def fetch_account_profile(creds):
   payload, kind, err = http_get_json(USER_URL, creds["token"], timeout=15)
   if kind is not None:
@@ -769,7 +781,7 @@ def subscription_rebill(payload):
   return end, cancels
 
 
-def build_result(weekly, tier_label="", account_email="", period_end="", cancels=False):
+def build_result(weekly, tier_label="", account_name="", account_email="", period_end="", cancels=False):
   # Shared weekly pool only — no monthly SuperGrok limit.
   return empty_result(
     rateLimitPercent=weekly["used_fraction"],
@@ -780,6 +792,7 @@ def build_result(weekly, tier_label="", account_email="", period_end="", cancels
     secondaryRateLimitLabel="",
     secondaryRateLimitResetAt="",
     tierLabel=plain_text(tier_label, max_len=80),
+    accountName=plain_text(account_name, max_len=80),
     accountEmail=plain_text(account_email, max_len=254),
     subscriptionPeriodEnd=period_end or "",
     subscriptionCancelsAtEnd=bool(cancels),
@@ -840,9 +853,11 @@ def main(argv=None):
     tier_label = jwt_tier_fallback(creds.get("token"))
 
   account_email = ""
+  account_name = ""
   profile, profile_kind, _profile_err = with_auth_retry(creds, fetch_account_profile)
   if profile_kind != "auth" and isinstance(profile, dict):
     account_email = str(profile.get("email") or "").strip()
+    account_name = account_display_name(profile)
 
   period_end = ""
   cancels = False
@@ -853,6 +868,7 @@ def main(argv=None):
   return emit(build_result(
     weekly,
     tier_label=tier_label,
+    account_name=account_name,
     account_email=account_email,
     period_end=period_end,
     cancels=cancels,

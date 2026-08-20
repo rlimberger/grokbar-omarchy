@@ -33,7 +33,13 @@ Panel {
   readonly property string resetAt: hostWidget ? String(hostWidget.resetAt || "") : ""
   readonly property string periodStart: hostWidget ? String(hostWidget.periodStart || "") : ""
   readonly property string tierLabel: hostWidget ? String(hostWidget.tierLabel || "") : ""
+  property string grokLoginName: ""
   property string grokLoginEmail: ""
+  property bool grokIdentityOpen: false
+  property bool cursorIdentityOpen: false
+  property bool refreshing: false
+  property int refreshDotFrame: 0
+  property double refreshHoldUntilMs: 0
   readonly property string subscriptionPeriodEnd: hostWidget ? String(hostWidget.subscriptionPeriodEnd || "") : ""
   readonly property bool subscriptionCancelsAtEnd: hostWidget ? hostWidget.subscriptionCancelsAtEnd === true : false
   readonly property string usageStatusText: hostWidget ? String(hostWidget.usageStatusText || "") : ""
@@ -50,6 +56,7 @@ Panel {
   readonly property string cursorResetAt: hostWidget ? String(hostWidget.cursorResetAt || "") : ""
   readonly property string cursorPeriodStart: hostWidget ? String(hostWidget.cursorPeriodStart || "") : ""
   readonly property string cursorTierLabel: hostWidget ? String(hostWidget.cursorTierLabel || "") : ""
+  property string cursorLoginName: ""
   property string cursorLoginEmail: ""
   readonly property string cursorUsageStatusText: hostWidget ? String(hostWidget.cursorUsageStatusText || "") : ""
   readonly property string cursorAuthHelpText: hostWidget ? String(hostWidget.cursorAuthHelpText || "") : ""
@@ -111,9 +118,27 @@ Panel {
     return "Grok"
   }
 
+  readonly property string grokRebillLabel: root.formatRebillLabel(subscriptionPeriodEnd, subscriptionCancelsAtEnd)
   readonly property string heroMeta: {
     if (usageStatusText !== "") return usageStatusText
-    return root.formatRebillLabel(subscriptionPeriodEnd, subscriptionCancelsAtEnd)
+    if (grokRebillLabel !== "") return grokRebillLabel
+    return "\u00A0"
+  }
+  readonly property real grokMetaOpacity: {
+    if (usageStatusText !== "") return 1
+    return root.grokIdentityOpen && grokRebillLabel !== "" ? 1 : 0
+  }
+
+  // Grok TUI Working spinner, ASCII stand-ins for ⋅ : ⸬ ⁙ in a fixed slot.
+  readonly property bool panelRefreshing: {
+    if (root.refreshing) return true
+    if (!hostWidget) return false
+    if (hostWidget.refreshing === true) return true
+    return root.showCursorUsage && hostWidget.cursorRefreshing === true
+  }
+  readonly property string refreshDotsText: {
+    var frames = [".", ":", ".:", "::"]
+    return frames[root.refreshDotFrame % 4]
   }
 
   // "23% of weekly limit used"
@@ -167,9 +192,15 @@ Panel {
   }
 
   readonly property string cursorTitle: cursorTierLabel !== "" ? cursorTierLabel : "Cursor"
+  readonly property string cursorRebillLabel: root.formatRebillLabel(cursorResetAt, false)
   readonly property string cursorHeroMeta: {
     if (cursorUsageStatusText !== "") return cursorUsageStatusText
-    return root.formatRebillLabel(cursorResetAt, false)
+    if (cursorRebillLabel !== "") return cursorRebillLabel
+    return "\u00A0"
+  }
+  readonly property real cursorMetaOpacity: {
+    if (cursorUsageStatusText !== "") return 1
+    return root.cursorIdentityOpen && cursorRebillLabel !== "" ? 1 : 0
   }
   readonly property string cursorResetsLabel: root.formatResetsLabel(cursorResetAt)
   readonly property url cursorIconSource: colorLuminance(surface) >= 0.5
@@ -267,8 +298,20 @@ Panel {
       root.bar.centerHoverRevealSuppressed = value
   }
 
+  function syncRefreshing() {
+    var live = false
+    if (hostWidget) {
+      live = hostWidget.refreshing === true
+        || (root.showCursorUsage && hostWidget.cursorRefreshing === true)
+    }
+    if (!live && Date.now() < root.refreshHoldUntilMs)
+      live = true
+    root.refreshing = live
+  }
+
   function open() {
     root.controller.show()
+    root.refresh()
     Qt.callLater(function() {
       if (root.opened) setCenterHoverRevealSuppressed(true)
     })
@@ -277,6 +320,8 @@ Panel {
   function openFromHotkey() { open() }
 
   function close() {
+    root.grokIdentityOpen = false
+    root.cursorIdentityOpen = false
     setCenterHoverRevealSuppressed(false)
     root.controller.hide()
   }
@@ -287,8 +332,12 @@ Panel {
   }
 
   function refresh() {
-    if (hostWidget && typeof hostWidget.refresh === "function")
-      hostWidget.refresh()
+    if (!hostWidget || typeof hostWidget.refresh !== "function")
+      return
+    root.refreshHoldUntilMs = Date.now() + 480
+    root.refreshing = true
+    hostWidget.refresh()
+    Qt.callLater(root.syncRefreshing)
   }
 
   function setShowCursorUsage(on) {
@@ -300,6 +349,33 @@ Panel {
     if (root.bar && typeof root.bar.switchPanelFrom === "function")
       return root.bar.switchPanelFrom(root.barIdentity, direction)
     return false
+  }
+
+  onHostWidgetChanged: root.syncRefreshing()
+  onRefreshingChanged: if (refreshing) refreshDotFrame = 0
+
+  Connections {
+    target: root.hostWidget
+    enabled: root.hostWidget != null
+    function onRefreshingChanged() { root.syncRefreshing() }
+    function onCursorRefreshingChanged() { root.syncRefreshing() }
+  }
+
+  Timer {
+    interval: 160
+    running: root.panelRefreshing && root.opened
+    repeat: true
+    onTriggered: root.refreshDotFrame = (root.refreshDotFrame + 1) % 4
+  }
+
+  Timer {
+    interval: 80
+    running: root.refreshing && root.refreshHoldUntilMs > 0 && root.opened
+    repeat: true
+    onTriggered: {
+      if (Date.now() >= root.refreshHoldUntilMs)
+        root.syncRefreshing()
+    }
   }
 
   KeyboardPanel {
@@ -333,23 +409,27 @@ Panel {
           width: parent.width
           spacing: Style.space(12)
 
-        PlainHero {
+        PlanHeader {
+          id: grokHeader
           width: parent.width
           title: root.weeklyTitle
           meta: root.heroMeta
-          detail: root.grokLoginEmail
+          metaOpacity: root.grokMetaOpacity
+          iconSource: root.iconSource
+          accountName: root.grokLoginName
+          accountEmail: root.grokLoginEmail
+          identityVisible: root.grokIdentityOpen
+          spinning: root.panelRefreshing
+          spinnerGlyph: root.refreshDotsText
           foreground: root.foreground
+          dim: root.dim
           fontFamily: root.fontFamily
 
-          iconComponent: Component {
-            Image {
-              source: root.iconSource
-              width: Style.font.display
-              height: Style.font.display
-              sourceSize.width: Style.font.display * 2
-              sourceSize.height: Style.font.display * 2
-              fillMode: Image.PreserveAspectFit
-            }
+          MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.grokIdentityOpen = !root.grokIdentityOpen
           }
         }
 
@@ -496,23 +576,25 @@ Panel {
           width: parent.width
           spacing: Style.space(12)
 
-          PlainHero {
+          PlanHeader {
+            id: cursorHeader
             width: parent.width
             title: root.cursorTitle
             meta: root.cursorHeroMeta
-            detail: root.cursorLoginEmail
+            metaOpacity: root.cursorMetaOpacity
+            iconSource: root.cursorIconSource
+            accountName: root.cursorLoginName
+            accountEmail: root.cursorLoginEmail
+            identityVisible: root.cursorIdentityOpen
             foreground: root.foreground
+            dim: root.dim
             fontFamily: root.fontFamily
 
-            iconComponent: Component {
-              Image {
-                source: root.cursorIconSource
-                width: Style.font.display
-                height: Style.font.display
-                sourceSize.width: Style.font.display * 2
-                sourceSize.height: Style.font.display * 2
-                fillMode: Image.PreserveAspectFit
-              }
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.cursorIdentityOpen = !root.cursorIdentityOpen
             }
           }
 
@@ -601,6 +683,171 @@ Panel {
             }
           }
         }
+      }
+    }
+  }
+
+  // Icon is centered on the title row so the plan name lines up with the logo.
+  // Renewal, name, and email keep their slots and only change opacity.
+  // Plan name, meta, and account identity are API strings: PlainText so
+  // QML AutoText cannot treat crafted <img src> markup as a resource fetch.
+  component PlanHeader: Item {
+    id: hdr
+    property string title: ""
+    property string meta: ""
+    property real metaOpacity: 0
+    property url iconSource
+    property string accountName: ""
+    property string accountEmail: ""
+    property bool identityVisible: false
+    property bool spinning: false
+    property string spinnerGlyph: ""
+    property color foreground: Color.foreground
+    property color dim: Color.foreground
+    property string fontFamily: Style.font.family
+
+    implicitHeight: Math.max(iconBox.height, titleCol.implicitHeight, trail.implicitHeight)
+
+    Item {
+      id: iconBox
+      width: Style.font.display
+      height: titleText.height
+      anchors.left: parent.left
+      anchors.top: parent.top
+
+      Image {
+        anchors.centerIn: parent
+        source: hdr.iconSource
+        width: Style.font.display
+        height: Style.font.display
+        sourceSize.width: Style.font.display * 2
+        sourceSize.height: Style.font.display * 2
+        fillMode: Image.PreserveAspectFit
+      }
+    }
+
+    Column {
+      id: titleCol
+      anchors.left: iconBox.right
+      anchors.leftMargin: Style.space(14)
+      anchors.right: trail.left
+      anchors.rightMargin: Style.space(12)
+      anchors.top: parent.top
+      spacing: Style.space(2)
+
+      Text {
+        id: titleText
+        width: parent.width
+        text: hdr.title
+        textFormat: Text.PlainText
+        color: hdr.foreground
+        font.family: hdr.fontFamily
+        font.pixelSize: Style.font.title
+        font.bold: true
+        elide: Text.ElideRight
+      }
+
+      Text {
+        width: parent.width
+        text: hdr.meta !== "" ? hdr.meta.toUpperCase() : "\u00A0"
+        textFormat: Text.PlainText
+        opacity: hdr.metaOpacity
+        color: hdr.dim
+        font.family: hdr.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+        font.letterSpacing: 1.2
+        elide: Text.ElideRight
+      }
+    }
+
+    AccountTrail {
+      id: trail
+      anchors.right: parent.right
+      anchors.top: parent.top
+      accountName: hdr.accountName
+      accountEmail: hdr.accountEmail
+      identityVisible: hdr.identityVisible
+      spinning: hdr.spinning
+      spinnerGlyph: hdr.spinnerGlyph
+      foreground: hdr.foreground
+      dim: hdr.dim
+      fontFamily: hdr.fontFamily
+    }
+  }
+
+  // Name sits on the title row; email on the reserved subtitle row.
+  // Spinner is a fixed-width ASCII slot on the title row.
+  component AccountTrail: Row {
+    id: trail
+    property string accountName: ""
+    property string accountEmail: ""
+    property bool identityVisible: false
+    property bool spinning: false
+    property string spinnerGlyph: ""
+    property color foreground: Color.foreground
+    property color dim: Color.foreground
+    property string fontFamily: Style.font.family
+    spacing: Style.space(10)
+
+    readonly property string titleText: accountName !== "" ? accountName : accountEmail
+    readonly property string subtitleText: accountName !== "" ? accountEmail : ""
+    readonly property string spinnerFont: "monospace"
+
+    Column {
+      spacing: Style.space(2)
+      opacity: trail.identityVisible && trail.titleText !== "" ? 1 : 0
+
+      Text {
+        id: nameText
+        text: trail.titleText !== "" ? trail.titleText : " "
+        textFormat: Text.PlainText
+        color: trail.foreground
+        font.family: trail.fontFamily
+        font.pixelSize: Style.font.title
+        font.bold: true
+        horizontalAlignment: Text.AlignRight
+        width: Math.max(implicitWidth, subText.implicitWidth)
+        elide: Text.ElideRight
+      }
+
+      Text {
+        id: subText
+        text: trail.subtitleText !== "" ? trail.subtitleText : " "
+        textFormat: Text.PlainText
+        color: trail.dim
+        font.family: trail.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+        font.letterSpacing: 1.2
+        horizontalAlignment: Text.AlignRight
+        width: parent.width
+        elide: Text.ElideRight
+      }
+    }
+
+    Item {
+      width: spinnerMeasure.implicitWidth
+      height: nameText.height
+      opacity: trail.spinning ? 1 : 0
+
+      Text {
+        id: spinnerMeasure
+        visible: false
+        text: "::"
+        font.family: trail.spinnerFont
+        font.pixelSize: Style.font.body
+        font.bold: true
+      }
+
+      Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        text: trail.spinnerGlyph
+        color: Color.accent
+        font.family: trail.spinnerFont
+        font.pixelSize: Style.font.body
+        font.bold: true
       }
     }
   }
@@ -728,97 +975,6 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         x: Math.round(parent.width * meter.paceFraction - width / 2)
         color: meter.paceMarkerColor
-      }
-    }
-  }
-
-  // Same layout as PanelHero, but API plan labels and emails stay PlainText.
-  // Stock PanelHero uses AutoText, which fetches <img src="...">.
-  component PlainHero: Item {
-    id: hero
-
-    property Component iconComponent: null
-    property string title: ""
-    property string meta: ""
-    property string detail: ""
-    property color foreground: Color.foreground
-    property string fontFamily: Style.font.family
-
-    readonly property color dim: Qt.darker(foreground, 1.4)
-
-    width: parent ? parent.width : implicitWidth
-    implicitHeight: Math.max(iconLoader.implicitHeight, heroLabels.implicitHeight)
-
-    Loader {
-      id: iconLoader
-      sourceComponent: hero.iconComponent
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-    }
-
-    Column {
-      id: heroLabels
-      anchors.left: iconLoader.right
-      anchors.leftMargin: Style.space(14)
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      spacing: Style.space(2)
-
-      Row {
-        visible: hero.title !== "" || detailPill.visible
-        width: parent.width
-
-        Text {
-          visible: hero.title !== ""
-          text: hero.title
-          textFormat: Text.PlainText
-          width: Math.min(implicitWidth, Math.max(0, parent.width - (detailPill.visible ? detailPill.implicitWidth + Style.space(8) : 0)))
-          color: hero.foreground
-          font.family: hero.fontFamily
-          font.pixelSize: Style.font.title
-          font.bold: true
-          elide: Text.ElideRight
-        }
-
-        Item {
-          width: Math.max(0, parent.width - parent.children[0].width - detailPill.implicitWidth)
-          height: 1
-        }
-
-        BorderSurface {
-          id: detailPill
-          visible: hero.detail !== ""
-          implicitWidth: detailText.implicitWidth + Style.space(10)
-          implicitHeight: detailText.implicitHeight + Style.space(4)
-          anchors.verticalCenter: parent.verticalCenter
-          color: "transparent"
-          borderSpec: Border.controlSpec("normal", hero.foreground, Color.accent)
-          radius: Style.cornerRadius
-
-          Text {
-            id: detailText
-            anchors.centerIn: parent
-            text: hero.detail
-            textFormat: Text.PlainText
-            color: hero.dim
-            font.family: hero.fontFamily
-            font.pixelSize: Style.font.body
-            font.bold: true
-          }
-        }
-      }
-
-      Text {
-        width: parent.width
-        text: hero.meta.toUpperCase()
-        textFormat: Text.PlainText
-        visible: text !== ""
-        color: hero.dim
-        font.family: hero.fontFamily
-        font.pixelSize: Style.font.caption
-        font.bold: true
-        font.letterSpacing: 1.2
-        elide: Text.ElideRight
       }
     }
   }

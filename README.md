@@ -9,7 +9,7 @@ Omarchy bar widget for SuperGrok weekly usage, with optional Cursor monthly usag
 
 Left click opens the usage panel. Right click refreshes. The widget hides when there is nothing to show.
 
-Cursor usage is shown only when the local Cursor session belongs to the same account as Grok. Other Cursor logins stay hidden. The panel shows the live subscription email and SuperGrok rebill/expiry date from the Grok and Cursor APIs.
+Cursor usage is shown only when the local Cursor session belongs to the same account as Grok. Other Cursor logins stay hidden. The panel shows the live account name with the subscription email under it, plus SuperGrok rebill/expiry, from the Grok and Cursor APIs.
 
 ## Install
 
@@ -32,6 +32,8 @@ Requires **Python 3** on `PATH` (stdlib only; no extra packages). Sign in with t
 
 - Bar: left click = panel, right click = refresh
 - Panel: `r` or Enter refresh, Tab neighboring panel, Esc close
+- Click the SuperGrok or Cursor title to show account name, email, and renewal
+- While usage refreshes, the panel shows a fixed-width ASCII spinner (`.`, `:`, `.:`, `::`)
 - **Cursor usage** toggle in the panel (off by default)
 
 ## Configure
@@ -60,7 +62,7 @@ Removal deletes the cloned plugin folder. It does not change Grok or Cursor logi
 
 ## Privacy
 
-This plugin reads local Grok and Cursor session files on your machine to call the official usage and subscription APIs. It never logs tokens. Account emails and SuperGrok rebill/expiry are loaded from those APIs at runtime and shown in the panel. Expired Grok (and Cursor CLI) tokens may be refreshed and written back to those same local files.
+This plugin reads local Grok and Cursor session files on your machine to call the official usage and subscription APIs. It never logs tokens. Account name, email, and SuperGrok rebill/expiry are loaded from those APIs at runtime and shown in the panel. Expired Grok (and Cursor CLI) tokens may be refreshed and written back to those same local files.
 
 ## License
 

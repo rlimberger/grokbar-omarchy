@@ -24,6 +24,7 @@ BarWidget {
   property string resetAt: ""
   property string periodStart: ""
   property string tierLabel: ""
+  property string grokLoginName: ""
   property string grokLoginEmail: ""
   property string subscriptionPeriodEnd: ""
   property bool subscriptionCancelsAtEnd: false
@@ -41,6 +42,7 @@ BarWidget {
   property string cursorResetAt: ""
   property string cursorPeriodStart: ""
   property string cursorTierLabel: ""
+  property string cursorLoginName: ""
   property string cursorLoginEmail: ""
   property string cursorUsageStatusText: ""
   property string cursorAuthHelpText: ""
@@ -203,6 +205,7 @@ BarWidget {
     root.resetAt = String(data.rateLimitResetAt || "")
     root.periodStart = String(data.rateLimitPeriodStart || "")
     root.tierLabel = String(data.tierLabel || "")
+    root.grokLoginName = String(data.accountName || "")
     root.grokLoginEmail = String(data.accountEmail || "")
     root.subscriptionPeriodEnd = String(data.subscriptionPeriodEnd || "")
     root.subscriptionCancelsAtEnd = data.subscriptionCancelsAtEnd === true
@@ -219,6 +222,7 @@ BarWidget {
     root.resetAt = ""
     root.periodStart = ""
     root.tierLabel = ""
+    root.grokLoginName = ""
     root.grokLoginEmail = ""
     root.subscriptionPeriodEnd = ""
     root.subscriptionCancelsAtEnd = false
@@ -242,6 +246,7 @@ BarWidget {
     root.cursorResetAt = String(data.rateLimitResetAt || data.secondaryRateLimitResetAt || "")
     root.cursorPeriodStart = String(data.rateLimitPeriodStart || "")
     root.cursorTierLabel = String(data.tierLabel || "")
+    root.cursorLoginName = String(data.accountName || "")
     root.cursorLoginEmail = String(data.accountEmail || "")
     root.cursorUsageStatusText = String(data.usageStatusText || "")
     root.cursorAuthHelpText = String(data.authHelpText || "")
@@ -256,6 +261,7 @@ BarWidget {
     root.cursorResetAt = ""
     root.cursorPeriodStart = ""
     root.cursorTierLabel = ""
+    root.cursorLoginName = ""
     root.cursorLoginEmail = ""
     root.cursorUsageStatusText = ""
     root.cursorAuthHelpText = ""
@@ -289,6 +295,8 @@ BarWidget {
 
   function refresh() {
     // Availability first: no auth → hide and skip the API.
+    if (root.grokAvailable) root.refreshing = true
+    if (root.showCursorUsage && root.cursorAvailable) root.cursorRefreshing = true
     root.probeGrok()
     if (root.showCursorUsage) root.probeCursor()
   }
@@ -322,7 +330,9 @@ BarWidget {
     if ("settings" in target) target.settings = root.settings
     if ("anchorItem" in target) target.anchorItem = button
     if ("hostWidget" in target) target.hostWidget = root
+    if ("grokLoginName" in target) target.grokLoginName = root.grokLoginName
     if ("grokLoginEmail" in target) target.grokLoginEmail = root.grokLoginEmail
+    if ("cursorLoginName" in target) target.cursorLoginName = root.cursorLoginName
     if ("cursorLoginEmail" in target) target.cursorLoginEmail = root.cursorLoginEmail
   }
 

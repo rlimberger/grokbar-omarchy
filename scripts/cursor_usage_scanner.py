@@ -74,6 +74,7 @@ def empty_result(**overrides):
     "secondaryRateLimitLabel": "",
     "secondaryRateLimitResetAt": "",
     "tierLabel": "",
+    "accountName": "",
     "accountEmail": "",
     "usageStatusText": "",
     "authHelpText": "",
@@ -592,7 +593,18 @@ def fetch_plan_name(creds):
   return str(info.get("planName") or "").strip()
 
 
-def fetch_account_email(creds):
+def account_display_name(payload):
+  if not isinstance(payload, dict):
+    return ""
+  name = str(payload.get("name") or "").strip()
+  if name:
+    return name
+  first = str(payload.get("firstName") or payload.get("given_name") or "").strip()
+  last = str(payload.get("lastName") or payload.get("family_name") or "").strip()
+  return " ".join(part for part in (first, last) if part)
+
+
+def fetch_account(creds):
   payload, kind, _err = http_post_json(
     f"{API_BASE}/GetMe",
     creds["token"],
@@ -600,8 +612,9 @@ def fetch_account_email(creds):
     timeout=15,
   )
   if kind is not None or not isinstance(payload, dict):
-    return ""
-  return str(payload.get("email") or "").strip()
+    return "", ""
+  email = str(payload.get("email") or "").strip()
+  return account_display_name(payload), email
 
 
 def with_auth_retry(creds, fetch_fn):
@@ -731,6 +744,7 @@ def build_result(creds, payload, tier_label=""):
     secondaryRateLimitLabel="Other Models",
     secondaryRateLimitResetAt=reset_iso,
     tierLabel=plain_text(format_tier(membership), max_len=80),
+    accountName=plain_text(creds.get("account_name"), max_len=80),
     accountEmail=plain_text(creds.get("account_email"), max_len=254),
     xLoginFound=True,
   )
@@ -814,9 +828,11 @@ def main(argv=None):
       err or "Could not load Cursor period usage.",
     ))
 
-  # Plan name and account email are best-effort; period usage still stands.
+  # Plan name and account identity are best-effort; period usage still stands.
   tier_label = fetch_plan_name(creds)
-  creds["account_email"] = fetch_account_email(creds)
+  account_name, account_email = fetch_account(creds)
+  creds["account_name"] = account_name
+  creds["account_email"] = account_email
 
   return emit(build_result(creds, payload, tier_label=tier_label))
 

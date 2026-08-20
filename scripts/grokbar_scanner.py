@@ -805,10 +805,18 @@ def main(argv=None):
     default=os.environ.get("GROK_AUTH_PATH", str(DEFAULT_AUTH)),
     help="Path to Grok auth.json (default: ~/.grok/auth.json)",
   )
+  parser.add_argument(
+    "--probe",
+    action="store_true",
+    help="Print ready/absent if a Grok token exists (no usage API)",
+  )
   args = parser.parse_args(argv)
 
   auth_path = expand_path(args.auth)
   creds, error = load_auth(auth_path)
+  if args.probe:
+    print("ready" if creds else "absent")
+    return 0
   if error is not None:
     return emit(error)
 

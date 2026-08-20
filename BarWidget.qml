@@ -150,8 +150,10 @@ BarWidget {
     return text
   }
 
-  function scannerCommand() {
+  function scannerCommand(probe) {
     var command = ["python3", root.scannerPath]
+    if (probe)
+      command.push("--probe")
     var authPath = root.resolvePath(root.setting("authPath", ""))
     if (authPath !== "")
       command.push("--auth", authPath)
@@ -373,18 +375,8 @@ BarWidget {
     id: presenceProbe
     // Signed-in credentials (default or override path). Grok CLI does not
     // need to be running — usage is fetched from grok.com with the OAuth token.
-    command: {
-      var authPath = root.resolvePath(root.setting("authPath", ""))
-      if (authPath === "")
-        authPath = (Quickshell.env("HOME") || "") + "/.grok/auth.json"
-      return ["bash", "-c",
-        "auth=" + JSON.stringify(authPath) + "; " +
-        "if [[ -s \"$auth\" ]] && grep -qE '\"(key|access_token)\"[[:space:]]*:' \"$auth\" 2>/dev/null; then " +
-        "echo ready; " +
-        "elif command -v grok >/dev/null 2>&1 || [[ -x \"$HOME/.local/bin/grok\" ]] || [[ -x \"$HOME/.grok/bin/grok\" ]]; then " +
-        "echo stopped; else echo absent; fi"
-      ]
-    }
+    // authPath is argv, never interpolated into a shell program.
+    command: root.scannerCommand(true)
     running: false
 
     stdout: StdioCollector {
